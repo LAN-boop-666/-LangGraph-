@@ -13,10 +13,6 @@ from langchain_core.tools import tool
 # 获取当前文件的父目录的父目录（即项目根目录）, 并添加到sys.path, 以后上线需要将myAgents模块发布，这里就不要了
 # 1. 获取项目根目录
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-#`__file__`：Python 内置变量，**当前 .py 文件本身的路径**
-#`os.path.abspath(路径)`：把路径转为**绝对路径（完整路径）**
-#`s.path.dirname(path)`：返回传入路径的**上一级目录（父文件夹**
-
 # 2. 判断项目根目录是否在sys.path中，若不在则添加
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
@@ -36,28 +32,22 @@ print("base_url:", base_url)
 
 
 def build_vector_store(docs_dir: str, save_path: str):
-    """从文档目录构建向量存储
-        docs_dir: 知识库存储路径
-        save_path: 向量存储保存的路径
-    """
+    """从文档目录构建向量存储"""
     # 1. 加载指定目录docs_dir下所有的文档
-    # DirectoryLoader 是 LangChain 提供的**文件夹批量加载器**
     loader = DirectoryLoader(
         docs_dir,
         glob="**/*.md",
         loader_cls=TextLoader,
         loader_kwargs={"encoding": "utf-8"},
     )
-    #`loader_cls=TextLoader`：使用纯文本加载器读取文件 loader_kwargs={"encoding": "utf-8"}：指定文件编码为utf-8
     docs = loader.load()
-    if not docs:
-        raise ValueError(f"知识库目录为空: {docs_dir}")
     print()
     print("加载到文档数量:", len(docs))
     for doc in docs:
         print("文件:", doc.metadata.get("source"))
         print("内容长度:", len(doc.page_content))
-    
+    if not docs:
+        raise ValueError(f"知识库目录为空: {docs_dir}")
     # ==========================================================
     # 2. 文档切分
     # RecursiveCharacterTextSplitter是一种基于字符的文档切分器，它会将文档内容按字符数进行切分，
@@ -66,6 +56,18 @@ def build_vector_store(docs_dir: str, save_path: str):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,  # 每个文档块的最大字符数
         chunk_overlap=50,  # 相邻文档块之间的重叠字符数
+        separators=[
+            "\n## ",
+            "\n### ",
+            "\n#### ",
+            "\n\n",
+            "\n",
+            "。",
+            "！",
+            "？",
+            " ",
+            ""
+        ]
     )
     chunks = splitter.split_documents(docs)
     print("切分后文档块数量:", len(chunks))
@@ -94,7 +96,6 @@ def build_vector_store(docs_dir: str, save_path: str):
         embedding=embeddings,
         persist_directory=save_path,
     )
-    # 完成：文本块 → 调用 embedding 生成向量 → 存入向量库
     print("Chroma 向量数据库创建完成,文档向量数量:", vector_store._collection.count())
     return vector_store
 
@@ -131,7 +132,7 @@ class MaaSEmbeddings(Embeddings):
         self.base_url = base_url.rstrip("/")
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
-        """调用 MaaS Embedding API，把一段文本（或多段文本）转换成对应的向量表示"""
+        """调用 MaaS Embedding API"""
         url = f"{self.base_url}/embeddings"  # 构建 API URL
         response = requests.post(
             url,
@@ -175,7 +176,7 @@ def get_retriever(
     try:
         from langchain_community.vectorstores import Chroma
 
-        vectorstore = Chroma(   #加载向量数据库
+        vectorstore = Chroma(
             persist_directory=save_path,
             embedding_function=embeddings,
         )
@@ -217,6 +218,11 @@ def _get_retriever():
 # ==============================================================
 # Agent Tool
 # ==============================================================
+
+from mylogger import log_tool_execution
+
+
+@log_tool_execution("search_knowledge_base")
 @tool
 def search_knowledge_base(query: str) -> str:
     """从本地知识库中检索相关信息。当需要查询已有文档、内部资料、历史记录时使用。
@@ -238,11 +244,9 @@ if __name__ == "__main__":
     print("=" * 60)
     print("开始构建本地知识库")
     print("=" * 60)
-    rootpath = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  #xx.pro2
-    print(rootpath)
     build_vector_store(
-        os.path.join(rootpath, "data", "knowledge"),
-        os.path.join(rootpath, "data", "vector_store"),
+        "./data/knowledge",
+        "./data/vector_store",
     )
 
     # embeddings = get_embeddings()
@@ -254,12 +258,12 @@ if __name__ == "__main__":
     # )
     # print(result, len(result))  #  3 个文档向量，每个向量 1024 维
 
-    # print()
-    # print("=" * 60)
-    # print("开始测试检索")
-    # print("=" * 60)
-    # query = "transformers"
-    # results = search_knowledge_base.invoke({"query": query})
-    # print()
-    # print("检索结果:")
-    # print(results)
+    print()
+    print("=" * 60)
+    print("开始测试检索")
+    print("=" * 60)
+    query = "transformers"
+    results = search_knowledge_base.invoke({"query": query})
+    print()
+    print("检索结果:")
+    print(results)
