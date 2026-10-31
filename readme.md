@@ -23,7 +23,7 @@ classify
 research/report
    |
 tool_calling --> tool_executor --> collect
-   |                             
+   |
 researcher --> analyst --> writer --> review
                                       |-- PASS --> END
                                       |-- REVISE --> researcher（最多 3 轮）
