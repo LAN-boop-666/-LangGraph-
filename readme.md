@@ -102,3 +102,20 @@ Retrieve:从知识库中检索相关文档
 Analyze:对检索到的文档连同原始问题一起打包给AI的提示词中，并进行分析，提取关键信息
 Generate:根据分析结果生成结构化报告，注意:此时AI的推理是基于你给的材料，而不是它凭空编造。
 RAG解决的问题:1，幻觉2.知识过时3，安全性
+
+
+---
+
+## 迁移说明
+
+本仓库从 `MichelleMike/AgentDev` 镜像迁移并筛选而来，仅保留本 LangGraph 智能研究助手及其配套代码、知识库、报告示例和依赖；与 Dify、AutoGen、通用 Agent、代码调试助手及其他章节无关的内容已过滤。
+
+安装依赖：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirement.txt
+```
+
+运行前在仓库根目录创建 `.env`，配置 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL_ID`、`TAVILY_API_KEY` 和 `EMBED_*` 变量；不要提交密钥。工作流入口为 `graph.py` 中的 `build_graph()`，可从仓库根目录运行或将根目录加入 `PYTHONPATH`。

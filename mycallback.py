@@ -14,3 +14,5 @@ logger = logging.getLogger("researcher_node")
 class ResearchCallbackHandler(BaseCallbackHandler):
   """研究助手项目的llm回调处理函数"""
   def on_llm_start(self, run_id: str, llm_call: dict):
+    """保留回调接口；具体日志实现由调用方按需扩展。"""
+    return None
