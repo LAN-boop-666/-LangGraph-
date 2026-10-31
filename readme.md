@@ -1,121 +1,169 @@
-从零构建一个完整的 智能研究助手（Smart Research Assistant）。这个助手能搜索信息、分析文档、生成报告，并支持多轮对话
+# LangGraph 智能研究助手
 
-需求描述:
+一个基于 LangGraph 的多智能体研究助手。它会先判断问题类型，再按需调用网络搜索、arXiv、本地知识库和文件工具，最后由研究、分析、写作节点生成结构化报告，并通过质量审查节点进行循环修正。
 
-用户输入问题
-↓
-[问题分类] → 是简单问题？→ 直接回答
-↓ 否
-[研究流程]
-├── 搜索相关信息（工具调用）
-├── 检索本地知识库（RAG）
-├── 综合分析（LLM 推理）
-└── 生成结构化报告（输出解析）
-↓
-[质量审查] → 不通过？→ 补充研究（循环）
-↓ 通过
-[输出结果] → 支持追问（多轮对话 + 记忆）
+## 能做什么
 
-涉及到的知识:
+- **问题路由**：区分闲聊/常识、一般研究问题和深度报告问题。
+- **网络检索**：通过 Tavily 搜索最新公开信息。
+- **学术检索**：通过 arXiv API 查询论文。
+- **本地 RAG**：读取 `data/knowledge/` 下的 Markdown 文档，切分后写入 Chroma，并按问题检索。
+- **多智能体协作**：researcher 负责整理资料，analyst 负责分析，writer 负责生成报告。
+- **质量审查与记忆**：报告不通过时回到研究节点重做；LangGraph 使用 MemorySaver 保存线程状态。
+- **报告文件工具**：可以列出和保存 Markdown 报告。
 
-- 文档加载，向量检索(RAG)
-- 对话记忆管理
-- 自定义工具(搜索，文件读写)
-- ReAct Agent范式
-- LangGraph工作流，持久化
-- 多Agent协作
+## 工作流程
 
-图的执行流程:
-START
-↓
-[classify] ── simple ──→ [simple_answer] ──→ END
-↓ research/report
-[tool_calling]
-↓ 有工具调用？
-├── Yes → [tool_executor] → [collect]
-└── No  → [collect]
-↓
-[researcher]
-↓
-[analyst]
-↓
-[writer]
-↓
-[review] ── 未通过 ──→ [researcher]（循环）
-↓ 通过
-END
-
-涉及到的知识点:
-┌─────────────────────────────────────────────────┐
-│                  用户输入                         │
-└────────────────────┬────────────────────────────┘
-↓
-┌─────────────────────────────────────────────────┐
-│  LangGraph 工作流                                │
-│                                                   │
-│  ┌──────────┐    ┌──────────┐                     │
-│  │ classify │───→│ 简单回答  │ ← LCEL 管道         │
-│  │ (路由)   │    └──────────┘                     │
-│  └────┬─────┘                                     │
-│       ↓                                           │
-│  ┌──────────┐    ┌──────────┐                    │
-│  │ 搜索工具  │←──→│ 工具执行  │ ← Tools            │
-│  └────┬─────┘    └──────────┘                     │
-│       ↓                                           │
-│  ┌──────────┐                                     │
-│  │ 研究节点  │ ← Prompt 模板                       │
-│  └────┬─────┘                                     │
-│       ↓                                           │
-│  ┌──────────┐                                     │
-│  │ 分析节点  │ ← LLM 调用                          │
-│  └────┬─────┘                                     │
-│       ↓                                           │
-│  ┌──────────┐                                     │
-│  │ 写作节点  │ ← 输出解析                     │
-│  └────┬─────┘                                     │
-│       ↓                                           │
-│  ┌──────────┐                                     │
-│  │ 质量审查  │──→ 未通过? → 回到研究（循环）        │
-│  └────┬─────┘                                     │
-│       ↓ 通过                                      │
-└─────────────────────────────────────────────────┘
-↓
-┌─────────────────────────────────────────────────┐
-│  输出结果 + 记忆持久化                           │
-└─────────────────────────────────────────────────┘
-
-技术小结:
-LangGraph:定义复杂的工作流图，支持条件路由、循环、持久化
-自定义工具:搜索、知识库检索、文件保存，利用@tool装饰器完成langgraph的工具的注册
-RAG:本地知识库的向量检索
-LCEL 管道:promptl1lmlparser 链式调用
-Prompt 工程:针对不同角色的系统提示
-输出解析:Pydantic 结构化输出
-状态管理:自定义 state 在节点间传递数据
-质量审查循环:确保输出质量
-以装饰器形式完成日志开发，以记录节点和工具执行时间和结果，方便调试和分析。
-以回调函数形式完成对LLM调用的监控和记录，包括请求参数、响应内容、耗时等。
-名词解释:
-RAG:检索增强生成，用于从本地知识库中检索相关文档，然后根据检索结果生成结构化报告。
-由三步组成 Retrieve->Analyze->Generate
-Retrieve:从知识库中检索相关文档
-Analyze:对检索到的文档连同原始问题一起打包给AI的提示词中，并进行分析，提取关键信息
-Generate:根据分析结果生成结构化报告，注意:此时AI的推理是基于你给的材料，而不是它凭空编造。
-RAG解决的问题:1，幻觉2.知识过时3，安全性
-
-
----
-
-## 迁移说明
-
-本仓库从 `MichelleMike/AgentDev` 镜像迁移并筛选而来，仅保留本 LangGraph 智能研究助手及其配套代码、知识库、报告示例和依赖；与 Dify、AutoGen、通用 Agent、代码调试助手及其他章节无关的内容已过滤。
-
-安装依赖：
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirement.txt
+```text
+用户问题
+   |
+classify
+   |-- simple --> simple_answer --> END
+   |
+research/report
+   |
+tool_calling --> tool_executor --> collect
+   |                             
+researcher --> analyst --> writer --> review
+                                      |-- PASS --> END
+                                      |-- REVISE --> researcher（最多 3 轮）
 ```
 
-运行前在仓库根目录创建 `.env`，配置 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL_ID`、`TAVILY_API_KEY` 和 `EMBED_*` 变量；不要提交密钥。工作流入口为 `graph.py` 中的 `build_graph()`，可从仓库根目录运行或将根目录加入 `PYTHONPATH`。
+## 环境要求
+
+- Python 3.10+
+- 可访问的 OpenAI 兼容大模型接口
+- 可选：Tavily API（网络搜索）
+- 可选：Embedding 兼容接口（本地知识库 RAG）
+
+## 安装
+
+PowerShell：
+
+```powershell
+git clone https://github.com/LAN-boop-666/-LangGraph-.git
+cd -LangGraph-
+
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirement.txt
+```
+
+如果 PowerShell 允许激活虚拟环境，也可以执行：
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+## 配置模型和工具
+
+在仓库根目录新建 `.env`。只填写自己的配置，不要把密钥提交到 Git：
+
+```dotenv
+# 必填：OpenAI 兼容聊天模型
+LLM_API_KEY=你的模型密钥
+LLM_BASE_URL=https://api-inference.modelscope.cn/v1/
+LLM_MODEL_ID=Qwen/Qwen3.5-35B-A3B
+LLM_TIMEOUT=60
+LLM_TEMPERATURE=0
+
+# 使用 Tavily 网络搜索时填写
+TAVILY_API_KEY=你的Tavily密钥
+
+# 使用本地 RAG 时填写
+EMBED_MODEL_NAME=你的Embedding模型名
+EMBED_API_KEY=你的Embedding密钥
+EMBED_BASE_URL=你的Embedding接口地址
+```
+
+`LLM_BASE_URL` 和 `EMBED_BASE_URL` 都要求服务提供 OpenAI 兼容接口。不要在 README、日志或提交记录中填写真实密钥。
+
+## 最小运行示例
+
+项目没有强制绑定某个 Web 服务，最简单的方式是从仓库根目录创建一个临时文件 `run_demo.py`：
+
+```python
+from langchain_core.messages import HumanMessage
+from graph import build_graph
+
+graph = build_graph()
+result = graph.invoke(
+    {"messages": [HumanMessage(content="请研究 LangGraph 在多智能体系统中的作用，并给出结构化报告。")]},
+    {"configurable": {"thread_id": "demo-001"}},
+)
+
+print(result.get("report", ""))
+```
+
+运行：
+
+```powershell
+.\.venv\Scripts\python.exe .\run_demo.py
+```
+
+说明：
+
+1. `build_graph()` 创建并编译 LangGraph 工作流。
+2. `messages` 中放入用户问题，图会自动补充 `question` 和问题类型。
+3. `thread_id` 用于 MemorySaver 识别对话线程；同一个线程可以继续传入后续问题。
+4. 深度研究任务通常会调用搜索工具并生成 `result["report"]`；简单问题则主要查看 `result["messages"]`。
+5. 这是一次真实模型调用，需要有效的 `LLM_API_KEY`、模型名和接口地址。
+
+## 启用本地知识库 RAG
+
+知识库文件放在 `data/knowledge/`。首次构建向量库：
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\knowledge.py
+```
+
+该命令会读取 Markdown、调用 Embedding 接口并生成 `data/vector_store/`。之后研究助手会自动复用已有向量库；如果向量库不存在，知识库工具会尝试重新构建。
+
+RAG 需要同时配置 `EMBED_MODEL_NAME`、`EMBED_API_KEY` 和 `EMBED_BASE_URL`。只使用普通问答或网络搜索时，可以暂不配置这三项。
+
+## 直接测试单个工具
+
+```powershell
+# 测试 Tavily 搜索，要求已配置 TAVILY_API_KEY
+.\.venv\Scripts\python.exe .\tools\search.py
+
+# 测试文件工具和报告目录
+.\.venv\Scripts\python.exe .\tools\file_ops.py
+```
+
+## 目录结构
+
+```text
+agent/
+  researcher.py       研究节点
+  analyst.py          分析节点
+  writer.py           写作节点和报告结构
+tools/
+  search.py           Tavily、arXiv 搜索
+  knowledge.py        Embedding、Chroma、RAG
+  file_ops.py         报告保存和列表
+data/knowledge/       本地 Markdown 知识库
+data/vector_store/    首次 RAG 构建后生成，已被 Git 忽略
+graph.py              LangGraph 图和路由
+state.py              共享状态定义
+requirement.txt       Python 依赖
+readme.md             设计说明
+```
+
+## 常见问题
+
+- **提示未配置 `LLM_API_KEY`**：检查 `.env` 是否位于仓库根目录，变量名是否完全一致。
+- **网络搜索返回未配置密钥**：填写 `TAVILY_API_KEY`；不使用网络搜索时可忽略。
+- **RAG 提示缺少 `EMBED_*`**：填写三个 Embedding 配置后重新运行 `tools/knowledge.py`。
+- **导入失败**：确认命令是在仓库根目录执行，并使用 `.venv\Scripts\python.exe`。
+- **报告为空**：先查看 `result["messages"]` 和终端日志，确认模型接口是否正常返回。
+
+## 依赖
+
+主要依赖见 [requirement.txt](requirement.txt)：
+
+- LangGraph
+- LangChain Core / Community / OpenAI
+- Chroma
+- Tavily
+- python-dotenv
+- requests / httpx
